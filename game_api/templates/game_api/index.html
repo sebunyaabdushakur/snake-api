@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Levels</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            color: #e5e7eb;
+            background: #111827;
+        }
+
+        main {
+            width: min(100%, 760px);
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            color: #86efac;
+        }
+
+        .instructions {
+            color: #cbd5e1;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+
+        .stat {
+            min-width: 130px;
+            padding: 12px 18px;
+            border: 1px solid #374151;
+            border-radius: 10px;
+            background: #1f2937;
+        }
+
+        .stat strong {
+            display: block;
+            margin-top: 5px;
+            color: #86efac;
+            font-size: 1.3rem;
+        }
+
+        canvas {
+            display: block;
+            max-width: 90vw;
+            height: auto;
+            margin: 0 auto;
+            border: 4px solid #4b5563;
+            border-radius: 8px;
+            background: #030712;
+        }
+
+        #message {
+            min-height: 24px;
+            margin: 16px 0;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 16px 0;
+        }
+
+        input,
+        button {
+            padding: 10px 14px;
+            border: 0;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        input {
+            width: 220px;
+        }
+
+        button {
+            color: #052e16;
+            background: #86efac;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #4ade80;
+        }
+
+        h2 {
+            margin-top: 32px;
+        }
+
+        #scores {
+            width: min(100%, 500px);
+            margin: 0 auto;
+            padding: 0;
+            list-style: none;
+            text-align: left;
+        }
+
+        #scores li {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px;
+            border-bottom: 1px solid #374151;
+        }
+
+        .small-note {
+            color: #9ca3af;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Snake Levels</h1>
+        <p class="instructions">Use the arrow keys or WASD to move. Eat 20 apples to advance.</p>
+
+        <section class="stats" aria-label="Game statistics">
+            <div class="stat">
+                Level
+                <strong id="level">1 / 5</strong>
+            </div>
+            <div class="stat">
+                Apples this level
+                <strong id="apples">0 / 20</strong>
+            </div>
+            <div class="stat">
+                Score
+                <strong id="score">0</strong>
+            </div>
+        </section>
+
+        <canvas id="game" width="400" height="400"></canvas>
+
+        <p id="message">Press Start to play.</p>
+
+        <div class="controls">
+            <input id="player-name" type="text" maxlength="50" value="Player" aria-label="Player name">
+            <button id="start-button" type="button">Start</button>
+        </div>
+
+        <p class="small-note">The board gets bigger at each new level.</p>
+
+        <h2>Recent scores</h2>
+        <ul id="scores">
+            <li>Loading scores…</li>
+        </ul>
+    </main>
+
+    <script>
+        const canvas = document.getElementById("game");
+        const context = canvas.getContext("2d");
+
+        const levelElement = document.getElementById("level");
+        const applesElement = document.getElementById("apples");
+        const scoreElement = document.getElementById("score");
+        const messageElement = document.getElementById("message");
+        const startButton = document.getElementById("start-button");
+        const playerNameInput = document.getElementById("player-name");
+        const scoresElement = document.getElementById("scores");
+
+        const cellSize = 20;
+        const startingGridSize = 20;
+        const applesNeededPerLevel = 20;
+        const maximumLevel = 5;
+
+        let level = 1;
+        let applesThisLevel = 0;
+        let totalApples = 0;
+        let snake = [];
+        let apple = {};
+        let direction = { x: 1, y: 0 };
+        let nextDirection = { x: 1, y: 0 };
+        let gameTimer = null;
+        let gameRunning = false;
+        let gameFinished = false;
+
+        function gridSizeForLevel(currentLevel) {
+            return startingGridSize + (currentLevel - 1) * 4;
+        }
+
+        function updateBoardSize() {
+            const gridSize = gridSizeForLevel(level);
+            canvas.width = gridSize * cellSize;
+            canvas.height = gridSize * cellSize;
+        }
+
+        function updateStats() {
+            levelElement.textContent = `${level} / ${maximumLevel}`;
+            applesElement.textContent = `${applesThisLevel} / ${applesNeededPerLevel}`;
+            scoreElement.textContent = totalApples * 10;
+        }
+
+        function placeApple() {
+            const gridSize = gridSizeForLevel(level);
+
+            do {
+                apple = {
+                    x: Math.floor(Math.random() * gridSize),
+                    y: Math.floor(Math.random() * gridSize)
+                };
+            } while (snake.some(part => part.x === apple.x && part.y === apple.y));
+        }
+
+        function drawGame() {
+            context.fillStyle = "#030712";
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            context.fillStyle = "#ef4444";
+            context.fillRect(
+                apple.x * cellSize,
+                apple.y * cellSize,
+                cellSize,
+                cellSize
+            );
+
+            snake.forEach((part, index) => {
+                context.fillStyle = index === 0 ? "#86efac" : "#22c55e";
+                context.fillRect(
+                    part.x * cellSize + 1,
+                    part.y * cellSize + 1,
+                    cellSize - 2,
+                    cellSize - 2
+                );
+            });
+        }
+
+        function resetGame() {
+            level = 1;
+            applesThisLevel = 0;
+            totalApples = 0;
+            direction = { x: 1, y: 0 };
+            nextDirection = { x: 1, y: 0 };
+
+            const center = Math.floor(startingGridSize / 2);
+            snake = [
+                { x: center, y: center },
+                { x: center - 1, y: center },
+                { x: center - 2, y: center }
+            ];
+
+            updateBoardSize();
+            placeApple();
+            updateStats();
+            drawGame();
+        }
+
+        function changeDirection(newDirection) {
+            const isOpposite =
+                newDirection.x === -direction.x &&
+                newDirection.y === -direction.y;
+
+            if (!isOpposite) {
+                nextDirection = newDirection;
+            }
+        }
+
+        function finishGame(won) {
+            gameRunning = false;
+            gameFinished = true;
+            clearTimeout(gameTimer);
+
+            if (won) {
+                messageElement.textContent = "You won! You completed all five levels.";
+            } else {
+                messageElement.textContent = "Game over. Your score is being saved.";
+            }
+
+            saveScore();
+        }
+
+        function moveSnake() {
+            if (!gameRunning) {
+                return;
+            }
+
+            direction = nextDirection;
+
+            const head = {
+                x: snake[0].x + direction.x,
+                y: snake[0].y + direction.y
+            };
+
+            const gridSize = gridSizeForLevel(level);
+            const eatsApple = head.x === apple.x && head.y === apple.y;
+
+            const bodyToCheck = eatsApple ? snake : snake.slice(0, -1);
+            const hitsSnake = bodyToCheck.some(
+                part => part.x === head.x && part.y === head.y
+            );
+
+            const hitsWall =
+                head.x < 0 ||
+                head.y < 0 ||
+                head.x >= gridSize ||
+                head.y >= gridSize;
+
+            if (hitsWall || hitsSnake) {
+                finishGame(false);
+                return;
+            }
+
+            snake.unshift(head);
+
+            if (eatsApple) {
+                applesThisLevel += 1;
+                totalApples += 1;
+
+                if (applesThisLevel === applesNeededPerLevel) {
+                    if (level === maximumLevel) {
+                        updateStats();
+                        drawGame();
+                        finishGame(true);
+                        return;
+                    }
+
+                    level += 1;
+                    applesThisLevel = 0;
+                    updateBoardSize();
+                    messageElement.textContent = `Level ${level}! The board has expanded.`;
+                }
+
+                placeApple();
+            } else {
+                snake.pop();
+            }
+
+            updateStats();
+            drawGame();
+
+            const speed = Math.max(65, 150 - (level - 1) * 15);
+            gameTimer = setTimeout(moveSnake, speed);
+        }
+
+        function startGame() {
+            clearTimeout(gameTimer);
+            resetGame();
+            gameFinished = false;
+            gameRunning = true;
+            messageElement.textContent = "Good luck!";
+            startButton.textContent = "Restart";
+            moveSnake();
+        }
+
+        async function saveScore() {
+            const playerName = playerNameInput.value.trim() || "Player";
+            const scoreData = {
+                player_name: playerName,
+                score: totalApples * 10,
+                level: level
+            };
+
+            try {
+                const response = await fetch("/api/scores/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(scoreData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`The API returned ${response.status}`);
+                }
+
+                messageElement.textContent += " Score saved.";
+                loadScores();
+            } catch (error) {
+                messageElement.textContent += " The score could not be saved. Check that Django is running.";
+                console.error("Could not save score:", error);
+            }
+        }
+
+        async function loadScores() {
+            try {
+                const response = await fetch("/api/scores/");
+
+                if (!response.ok) {
+                    throw new Error(`The API returned ${response.status}`);
+                }
+
+                const scores = await response.json();
+                scoresElement.replaceChildren();
+
+                if (scores.length === 0) {
+                    const item = document.createElement("li");
+                    item.textContent = "No scores saved yet.";
+                    scoresElement.appendChild(item);
+                    return;
+                }
+
+                scores.slice(0, 10).forEach(item => {
+                    const row = document.createElement("li");
+                    const player = document.createElement("span");
+                    const result = document.createElement("span");
+
+                    player.textContent = item.player_name;
+                    result.textContent = `${item.score} points, level ${item.level}`;
+
+                    row.append(player, result);
+                    scoresElement.appendChild(row);
+                });
+            } catch (error) {
+                scoresElement.replaceChildren();
+                const item = document.createElement("li");
+                item.textContent = "Could not load scores. Check that Django is running.";
+                scoresElement.appendChild(item);
+                console.error("Could not load scores:", error);
+            }
+        }
+
+        document.addEventListener("keydown", event => {
+            const key = event.key.toLowerCase();
+
+            const directions = {
+                arrowup: { x: 0, y: -1 },
+                w: { x: 0, y: -1 },
+                arrowdown: { x: 0, y: 1 },
+                s: { x: 0, y: 1 },
+                arrowleft: { x: -1, y: 0 },
+                a: { x: -1, y: 0 },
+                arrowright: { x: 1, y: 0 },
+                d: { x: 1, y: 0 }
+            };
+
+            if (directions[key]) {
+                event.preventDefault();
+                changeDirection(directions[key]);
+            }
+        });
+
+        startButton.addEventListener("click", startGame);
+
+        resetGame();
+        loadScores();
+    </script>
+</body>
+</html>
